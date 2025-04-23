@@ -511,6 +511,7 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
         return linker::dlsym(handle, sym);
     });
     std::thread startThread([&support]() {
+        ThreadMover::storeStartThreadId();
         support.startGame((ANativeActivity_createFunc*)linker::dlsym(handle, "ANativeActivity_onCreate"), (GameActivity_createFunc*)linker::dlsym(handle, "GameActivity_onCreate"),
                           linker::dlsym(handle, "stbi_load_from_memory"),
                           linker::dlsym(handle, "stbi_image_free"));
