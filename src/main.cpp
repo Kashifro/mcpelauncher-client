@@ -394,11 +394,11 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
         }
     }
 
-    std::vector<mcpelauncher_hook_t> hooks;
-    FakeSwappyGL::initHooks(hooks);
+    std::vector<mcpelauncher_hook_t> mcpeHooks;
+    FakeSwappyGL::initHooks(mcpeHooks);
 
     Log::trace("Launcher", "Loading Minecraft library");
-    static void* handle = MinecraftUtils::loadMinecraftLib(reinterpret_cast<void*>(&CorePatches::showMousePointer), reinterpret_cast<void*>(&CorePatches::hideMousePointer), reinterpret_cast<void*>(&CorePatches::setFullscreen), reinterpret_cast<void*>(&FakeLooper::onGameActivityClose), hooks);
+    static void* handle = MinecraftUtils::loadMinecraftLib(reinterpret_cast<void*>(&CorePatches::showMousePointer), reinterpret_cast<void*>(&CorePatches::hideMousePointer), reinterpret_cast<void*>(&CorePatches::setFullscreen), reinterpret_cast<void*>(&FakeLooper::onGameActivityClose), mcpeHooks);
     if(!handle && options.graphicsApi == GraphicsApi::OPENGL) {
         // Old game version or renderdragon
         options.graphicsApi = GraphicsApi::OPENGL_ES2;
@@ -418,7 +418,7 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
             modLoader.loadModsFromDirectory(PathHelper::getPrimaryDataDirectory() + "mods/", true);
         }
         // Try load the game again
-        handle = MinecraftUtils::loadMinecraftLib(reinterpret_cast<void*>(&CorePatches::showMousePointer), reinterpret_cast<void*>(&CorePatches::hideMousePointer), reinterpret_cast<void*>(&CorePatches::setFullscreen), reinterpret_cast<void*>(&FakeLooper::onGameActivityClose), hooks);
+        handle = MinecraftUtils::loadMinecraftLib(reinterpret_cast<void*>(&CorePatches::showMousePointer), reinterpret_cast<void*>(&CorePatches::hideMousePointer), reinterpret_cast<void*>(&CorePatches::setFullscreen), reinterpret_cast<void*>(&FakeLooper::onGameActivityClose), mcpeHooks);
     }
     if(!handle && !disableFmod) {
         // 1.21.30.22 technically require newer fmod
@@ -427,7 +427,7 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
         linker::unload_library(libfmod);
 
         // Try load the game again
-        handle = MinecraftUtils::loadMinecraftLib(reinterpret_cast<void*>(&CorePatches::showMousePointer), reinterpret_cast<void*>(&CorePatches::hideMousePointer), reinterpret_cast<void*>(&CorePatches::setFullscreen), reinterpret_cast<void*>(&FakeLooper::onGameActivityClose), hooks);
+        handle = MinecraftUtils::loadMinecraftLib(reinterpret_cast<void*>(&CorePatches::showMousePointer), reinterpret_cast<void*>(&CorePatches::hideMousePointer), reinterpret_cast<void*>(&CorePatches::setFullscreen), reinterpret_cast<void*>(&FakeLooper::onGameActivityClose), mcpeHooks);
     }
     if(!handle) {
         Log::error("Launcher", "Failed to load Minecraft library, please reinstall or wait for an update to support the new release");
