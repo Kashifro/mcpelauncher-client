@@ -41,6 +41,10 @@ void CorePatches::setFullscreen(void* t, bool fullscreen) {
     currentGameWindowHandle.callbacks->setFullscreen(fullscreen);
 }
 
+void CorePatches::setPendingDelayedPaste() {
+    currentGameWindowHandle.callbacks->setDelayedPaste();
+}
+
 void CorePatches::setGameWindow(std::shared_ptr<GameWindow> gameWindow) {
     currentGameWindowHandle.window = gameWindow;
 }

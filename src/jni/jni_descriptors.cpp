@@ -6,6 +6,7 @@
 #include "cert_manager.h"
 #include "package_source.h"
 #include "http_stub.h"
+#include "fmod.h"
 #ifdef HAVE_PULSEAUDIO
 #include "pulseaudio.h"
 #endif
@@ -361,4 +362,13 @@ END_NATIVE_DESCRIPTOR
 BEGIN_NATIVE_DESCRIPTOR(Signature){Function<&Signature::initVerify>{}, "initVerify"},
     {Function<&Signature::verify>{}, "verify"},
     {Function<&Signature::getInstance>{}, "getInstance"},
+END_NATIVE_DESCRIPTOR
+
+BEGIN_NATIVE_DESCRIPTOR(FMOD){Function<&FMOD::checkInit>{}, "checkInit"},
+{Function<&FMOD::supportsAAudio>{}, "supportsAAudio"},
+{Function<&FMOD::supportsLowLatency>{}, "supportsLowLatency"},
+{Function<&FMOD::getAssetManager>{}, "getAssetManager"},
+END_NATIVE_DESCRIPTOR
+
+BEGIN_NATIVE_DESCRIPTOR(AssetManager)
     END_NATIVE_DESCRIPTOR
