@@ -78,7 +78,13 @@ void FakeAudio::initHybrisHooks(std::unordered_map<std::string, void *> &syms) {
         if(!stream->s) {
             return AAUDIO_STREAM_STATE_CLOSED;
         }
-        return SDL_AudioStreamDevicePaused(stream->s) ? AAUDIO_STREAM_STATE_PAUSED : AAUDIO_STREAM_STATE_STARTED;
+        // Backport to SDL 3.1 Audio API for legacy macOS support
+        SDL_AudioDeviceID devid = SDL_GetAudioStreamDevice(stream->s);
+        if (!devid) {
+            return AAUDIO_STREAM_STATE_CLOSED;
+        }
+    
+        return SDL_AudioDevicePaused(devid) ? AAUDIO_STREAM_STATE_PAUSED : AAUDIO_STREAM_STATE_STARTED;
     };
     syms["AAudioStream_getFormat"] = (void *)+[](FakeAudioStream *_Nonnull stream) -> aaudio_format_t {
         return stream->format;
