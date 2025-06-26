@@ -76,8 +76,6 @@ static void ReloadFont() {
     fontVeryLargeSize = io.Fonts->AddFontFromMemoryTTF(data, data_size, (int)ceil(36 * Settings::scale), &fontConfig);
 
     IM_FREE(data);
-
-    ImGui_ImplOpenGL3_CreateFontsTexture();
 }
 
 struct MenuEntry {
