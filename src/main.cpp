@@ -90,6 +90,12 @@ public:
     }
 };
 
+std::string normalizePath(const std::string& path) {
+    if (!path.empty() && path[path.length() - 1] != '/')
+        return path + '/';
+    return path;
+}
+
 int main(int argc, char* argv[]) {
     if(argc == 2 && argv[1][0] != '-') {
         Log::info("Sendfile", "sending file");
@@ -154,10 +160,10 @@ int main(int argc, char* argv[]) {
     for(size_t i = 0; i < mods.get().length();) {
         auto r = mods.get().find(',', i);
         if(r == std::string::npos) {
-            modDirs.push_back(mods.get().substr(i));
+            modDirs.push_back(normalizePath(mods.get().substr(i)));
             break;
         } else {
-            modDirs.push_back(mods.get().substr(i, r - i));
+            modDirs.push_back(normalizePath(mods.get().substr(i, r - i)));
             i = r + 1;
         }
     }
