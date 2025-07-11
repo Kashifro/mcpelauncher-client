@@ -499,8 +499,14 @@ void ImGuiUIDrawFrame(GameWindow* window) {
     io.AddMousePosEvent(sharedInputState.mousePosX.load(), sharedInputState.mousePosY.load());
     
     // Update mouse button states
+    static bool lastMouseDown[5] = {false}; // Track previous frame mouse states
     for(int i = 0; i < 5; i++) {
-        io.AddMouseButtonEvent(i, sharedInputState.mouseDown[i].load());
+        bool currentState = sharedInputState.mouseDown[i].load();
+        if(currentState != lastMouseDown[i]) {
+            // Mouse button state changed, send event to ImGui
+            io.AddMouseButtonEvent(i, currentState);
+            lastMouseDown[i] = currentState;
+        }
     }
     
     // Update mouse wheel if it was updated
@@ -521,27 +527,51 @@ void ImGuiUIDrawFrame(GameWindow* window) {
     
     // Update touch input if it was updated
     if(sharedInputState.touchUpdated.load()) {
+        static bool lastTouchDown = false;
+        static float lastTouchX = 0.0f, lastTouchY = 0.0f;
+        static int lastTouchId = -1;
+        
         // Convert touch to mouse for ImGui only if we have a valid touch
         if(sharedInputState.touchId.load() >= 0) {
+            float touchX = sharedInputState.touchPosX.load();
+            float touchY = sharedInputState.touchPosY.load();
+            bool touchDown = sharedInputState.touchDown.load();
+            int touchId = sharedInputState.touchId.load();
+            
             io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
-            io.AddMousePosEvent(sharedInputState.touchPosX.load(), sharedInputState.touchPosY.load());
-            io.AddMouseButtonEvent(ImGuiMouseButton_Left, sharedInputState.touchDown.load());
+            
+            // Always update position if touch position changed
+            if(touchX != lastTouchX || touchY != lastTouchY) {
+                io.AddMousePosEvent(touchX, touchY);
+                lastTouchX = touchX;
+                lastTouchY = touchY;
+            }
+            
+            // Update button state if it changed
+            if(touchDown != lastTouchDown || touchId != lastTouchId) {
+                io.AddMouseButtonEvent(ImGuiMouseButton_Left, touchDown);
+                lastTouchDown = touchDown;
+                lastTouchId = touchId;
+            }
         }
         sharedInputState.touchUpdated = false;
     }
     
     // Update keyboard states
+    static int lastKeyDown[512] = {0}; // Track previous frame key states
     for(int i = 0; i < 512; i++) {
-        if(sharedInputState.keyDown[i].load()) {
-            // Convert key code to ImGui key and add event
+        int currentState = sharedInputState.keyDown[i].load();
+        if(currentState != lastKeyDown[i]) {
+            // Key state changed, send event to ImGui
             ImGuiKey imguiKey = mapImGuiKey((KeyCode)i);
             ImGuiKey modKey = mapImGuiModKey((KeyCode)i);
             if(imguiKey != ImGuiKey_None) {
-                io.AddKeyEvent(imguiKey, true);
+                io.AddKeyEvent(imguiKey, currentState != 0);
             }
             if(modKey != ImGuiKey_None) {
-                io.AddKeyEvent(modKey, true);
+                io.AddKeyEvent(modKey, currentState != 0);
             }
+            lastKeyDown[i] = currentState;
         }
     }
 
