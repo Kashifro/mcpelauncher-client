@@ -5,7 +5,7 @@
 #include <fstream>
 
 std::optional<bool> Settings::enable_imgui = {};
-int Settings::menubarsize = 0;
+std::atomic<int> Settings::menubarsize = 0;
 std::string Settings::clipboard;
 bool Settings::enable_keyboard_autofocus_patches_1_20_60 = false;
 bool Settings::enable_keyboard_autofocus_paste_patches_1_20_60 = false;

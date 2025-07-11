@@ -1,5 +1,8 @@
 #pragma once
 #include <game_window.h>
+#include <atomic>
+#include <mutex>
+#include <string>
 
 void ImGuiUIInit(GameWindow* window);
 void ImGuiUIDrawFrame(GameWindow* window);
@@ -56,3 +59,30 @@ struct control
 void mcpelauncher_show_window(const char* title, int isModal, void* user, void(*onClose)(void* user), int count, control* controls);
 
 void mcpelauncher_close_window(const char *title);
+
+struct SharedInputState {
+    std::atomic<float> mousePosX;
+    std::atomic<float> mousePosY;
+    std::atomic<bool> mouseDown[5];
+    std::atomic<int> keyDown[512];
+    std::atomic<float> mouseWheelDX;
+    std::atomic<float> mouseWheelDY;
+    std::atomic<bool> mouseWheelUpdated;
+    std::atomic<bool> wantTextInput;
+    std::atomic<bool> wantCaptureMouse;
+    std::atomic<bool> wantCaptureKeyboard;
+    std::mutex clipboardMutex;
+    std::string clipboardText;
+    std::mutex textInputMutex;
+    std::string textInputBuffer;
+    std::atomic<bool> textInputUpdated;
+    
+    // Touch input state
+    std::atomic<float> touchPosX;
+    std::atomic<float> touchPosY;
+    std::atomic<bool> touchDown;
+    std::atomic<int> touchId;
+    std::atomic<bool> touchUpdated;
+};
+
+extern SharedInputState sharedInputState;

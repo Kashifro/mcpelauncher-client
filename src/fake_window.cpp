@@ -11,6 +11,6 @@ void FakeWindow::initHybrisHooks(std::unordered_map<std::string, void*>& syms) {
     syms["ANativeWindow_getHeight"] = (void*)+[](void* window) -> int32_t {
         int width, height;
         ((GameWindow*)window)->getWindowSize(width, height);
-        return height - Settings::menubarsize;
+        return height - Settings::menubarsize.load();
     };
 }

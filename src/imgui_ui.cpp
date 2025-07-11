@@ -22,6 +22,10 @@
 #include <mutex>
 #include <mcpelauncher/linker.h>
 
+// Forward declaration for key mapping functions
+static ImGuiKey mapImGuiKey(KeyCode code);
+static ImGuiKey mapImGuiModKey(KeyCode code);
+
 static double g_Time = 0.0;
 static bool allowGPU = true;
 
@@ -43,6 +47,122 @@ static std::string_view myGlGetString(GLenum t) {
         return {};
     }
     return (const char*)raw;
+}
+
+static ImGuiKey mapImGuiKey(KeyCode code) {
+    if(code >= KeyCode::NUM_0 && code <= KeyCode::NUM_9)
+        return (ImGuiKey)((int)code - (int)KeyCode::NUM_0 + ImGuiKey_0);
+    if(code >= KeyCode::NUMPAD_0 && code <= KeyCode::NUMPAD_9)
+        return (ImGuiKey)((int)code - (int)KeyCode::NUMPAD_0 + ImGuiKey_Keypad0);
+    if(code >= KeyCode::A && code <= KeyCode::Z)
+        return (ImGuiKey)((int)code - (int)KeyCode::A + ImGuiKey_A);
+    if(code >= KeyCode::FN1 && code <= KeyCode::FN12)
+        return (ImGuiKey)((int)code - (int)KeyCode::FN1 + ImGuiKey_F1);
+    switch(code) {
+    case KeyCode::BACK:
+        return ImGuiKey_AppBack;
+    case KeyCode::BACKSPACE:
+        return ImGuiKey_Backspace;
+    case KeyCode::TAB:
+        return ImGuiKey_Tab;
+    case KeyCode::ENTER:
+        return ImGuiKey_Enter;
+    case KeyCode::LEFT_SHIFT:
+        return ImGuiKey_LeftShift;
+    case KeyCode::RIGHT_SHIFT:
+        return ImGuiKey_RightShift;
+    case KeyCode::LEFT_CTRL:
+        return ImGuiKey_LeftCtrl;
+    case KeyCode::RIGHT_CTRL:
+        return ImGuiKey_RightCtrl;
+    case KeyCode::PAUSE:
+        return ImGuiKey_Pause;
+    case KeyCode::CAPS_LOCK:
+        return ImGuiKey_CapsLock;
+    case KeyCode::ESCAPE:
+        return ImGuiKey_Escape;
+    case KeyCode::SPACE:
+        return ImGuiKey_Space;
+    case KeyCode::PAGE_UP:
+        return ImGuiKey_PageUp;
+    case KeyCode::PAGE_DOWN:
+        return ImGuiKey_PageDown;
+    case KeyCode::END:
+        return ImGuiKey_End;
+    case KeyCode::HOME:
+        return ImGuiKey_Home;
+    case KeyCode::LEFT:
+        return ImGuiKey_LeftArrow;
+    case KeyCode::UP:
+        return ImGuiKey_UpArrow;
+    case KeyCode::RIGHT:
+        return ImGuiKey_RightArrow;
+    case KeyCode::DOWN:
+        return ImGuiKey_DownArrow;
+    case KeyCode::INSERT:
+        return ImGuiKey_Insert;
+    case KeyCode::DELETE:
+        return ImGuiKey_Delete;
+    case KeyCode::NUM_LOCK:
+        return ImGuiKey_NumLock;
+    case KeyCode::SCROLL_LOCK:
+        return ImGuiKey_ScrollLock;
+    case KeyCode::SEMICOLON:
+        return ImGuiKey_Semicolon;
+    case KeyCode::EQUAL:
+        return ImGuiKey_Equal;
+    case KeyCode::COMMA:
+        return ImGuiKey_Comma;
+    case KeyCode::MINUS:
+        return ImGuiKey_Minus;
+    case KeyCode::NUMPAD_ADD:
+        return ImGuiKey_KeypadAdd;
+    case KeyCode::NUMPAD_SUBTRACT:
+        return ImGuiKey_KeypadSubtract;
+    case KeyCode::NUMPAD_MULTIPLY:
+        return ImGuiKey_KeypadMultiply;
+    case KeyCode::NUMPAD_DIVIDE:
+        return ImGuiKey_KeypadDivide;
+    case KeyCode::PERIOD:
+        return ImGuiKey_Period;
+    case KeyCode::NUMPAD_DECIMAL:
+        return ImGuiKey_KeypadDecimal;
+    case KeyCode::SLASH:
+        return ImGuiKey_Slash;
+    case KeyCode::GRAVE:
+        return ImGuiKey_GraveAccent;
+    case KeyCode::LEFT_BRACKET:
+        return ImGuiKey_LeftBracket;
+    case KeyCode::BACKSLASH:
+        return ImGuiKey_Backslash;
+    case KeyCode::RIGHT_BRACKET:
+        return ImGuiKey_RightBracket;
+    case KeyCode::APOSTROPHE:
+        return ImGuiKey_Apostrophe;
+    case KeyCode::MENU:
+        return ImGuiKey_Menu;
+    case KeyCode::LEFT_ALT:
+        return ImGuiKey_LeftAlt;
+    case KeyCode::RIGHT_ALT:
+        return ImGuiKey_RightAlt;
+    default:
+        return ImGuiKey_None;
+    }
+}
+
+static ImGuiKey mapImGuiModKey(KeyCode code) {
+    switch(code) {
+    case KeyCode::LEFT_SHIFT:
+    case KeyCode::RIGHT_SHIFT:
+        return ImGuiMod_Shift;
+    case KeyCode::LEFT_CTRL:
+    case KeyCode::RIGHT_CTRL:
+        return ImGuiMod_Ctrl;
+    case KeyCode::LEFT_ALT:
+        return ImGuiMod_Alt;
+    default:
+        return ImGuiKey_None;
+    }
 }
 
 static void ReloadFont() {
@@ -374,7 +494,74 @@ void ImGuiUIDrawFrame(GameWindow* window) {
     io.DeltaTime = g_Time > 0.0 ? (float)(current_time - g_Time) : (float)(1.0f / 60.0f);
     g_Time = current_time;
 
+    // Update ImGui input state from shared state
+    io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
+    io.AddMousePosEvent(sharedInputState.mousePosX.load(), sharedInputState.mousePosY.load());
+    
+    // Update mouse button states
+    for(int i = 0; i < 5; i++) {
+        io.AddMouseButtonEvent(i, sharedInputState.mouseDown[i].load());
+    }
+    
+    // Update mouse wheel if it was updated
+    if(sharedInputState.mouseWheelUpdated.load()) {
+        io.AddMouseWheelEvent(sharedInputState.mouseWheelDX.load(), sharedInputState.mouseWheelDY.load());
+        sharedInputState.mouseWheelUpdated = false;
+    }
+    
+    // Update text input if it was updated
+    if(sharedInputState.textInputUpdated.load()) {
+        std::lock_guard<std::mutex> lock(sharedInputState.textInputMutex);
+        if(!sharedInputState.textInputBuffer.empty()) {
+            io.AddInputCharactersUTF8(sharedInputState.textInputBuffer.c_str());
+            sharedInputState.textInputBuffer.clear();
+        }
+        sharedInputState.textInputUpdated = false;
+    }
+    
+    // Update touch input if it was updated
+    if(sharedInputState.touchUpdated.load()) {
+        // Convert touch to mouse for ImGui only if we have a valid touch
+        if(sharedInputState.touchId.load() >= 0) {
+            io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+            io.AddMousePosEvent(sharedInputState.touchPosX.load(), sharedInputState.touchPosY.load());
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, sharedInputState.touchDown.load());
+        }
+        sharedInputState.touchUpdated = false;
+    }
+    
+    // Update keyboard states
+    for(int i = 0; i < 512; i++) {
+        if(sharedInputState.keyDown[i].load()) {
+            // Convert key code to ImGui key and add event
+            ImGuiKey imguiKey = mapImGuiKey((KeyCode)i);
+            ImGuiKey modKey = mapImGuiModKey((KeyCode)i);
+            if(imguiKey != ImGuiKey_None) {
+                io.AddKeyEvent(imguiKey, true);
+            }
+            if(modKey != ImGuiKey_None) {
+                io.AddKeyEvent(modKey, true);
+            }
+        }
+    }
+
     ImGui::NewFrame();
+    
+    // Handle text input state changes
+    static bool lastWantTextInput = false;
+    if(io.WantTextInput != lastWantTextInput) {
+        lastWantTextInput = io.WantTextInput;
+        if(io.WantTextInput) {
+            window->startTextInput();
+        } else {
+            window->stopTextInput();
+        }
+    }
+    
+    // Update shared state with current ImGui wants
+    sharedInputState.wantTextInput = io.WantTextInput;
+    sharedInputState.wantCaptureMouse = io.WantCaptureMouse;
+    sharedInputState.wantCaptureKeyboard = io.WantCaptureKeyboard;
     static auto showMenuBar = true;
     static auto menuFocused = false;
     auto now = std::chrono::high_resolution_clock::now();
@@ -542,10 +729,10 @@ void ImGuiUIDrawFrame(GameWindow* window) {
             ImGui::EndMenu();
         }
         auto size = ImGui::GetWindowSize();
-        Settings::menubarsize = (int)size.y;
+        Settings::menubarsize.store((int)size.y);
         ImGui::EndMainMenuBar();
     } else {
-        Settings::menubarsize = 0;
+        Settings::menubarsize.store(0);
         menuFocused = false;
         lastwantfocusnextframe = false;
     }
@@ -715,7 +902,7 @@ void ImGuiUIDrawFrame(GameWindow* window) {
         if(movingMode) {
             window_flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoMouseInputs;
         }
-        ImGui::SetNextWindowBgAlpha(ImGui::GetKeyData(WindowCallbacks::mapImGuiKey((KeyCode)(GameOptions::fullKeyboard ? GameOptions::upKeyFullKeyboard : GameOptions::upKey)))->Down ? 0.70f : 0.2f);  // Transparent background
+        ImGui::SetNextWindowBgAlpha(ImGui::GetKeyData(mapImGuiKey((KeyCode)(GameOptions::fullKeyboard ? GameOptions::upKeyFullKeyboard : GameOptions::upKey)))->Down ? 0.70f : 0.2f);  // Transparent background
         ImVec2 size;
 
         if(ImGui::BeginChild("W", ImVec2(0, 0), ImGuiChildFlags_AlwaysAutoResize | ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_FrameStyle, window_flags & ~ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -727,7 +914,7 @@ void ImGuiUIDrawFrame(GameWindow* window) {
         auto x = work_pos.x;
         auto y = work_pos.y + size.y + SMALL_PAD;
         ImGui::SetCursorPos(adj(ImVec2(x, y)));
-        ImGui::SetNextWindowBgAlpha(ImGui::GetKeyData(WindowCallbacks::mapImGuiKey((KeyCode)(GameOptions::fullKeyboard ? GameOptions::leftKeyFullKeyboard : GameOptions::leftKey)))->Down ? 0.70f : 0.2f);  // Transparent background
+        ImGui::SetNextWindowBgAlpha(ImGui::GetKeyData(mapImGuiKey((KeyCode)(GameOptions::fullKeyboard ? GameOptions::leftKeyFullKeyboard : GameOptions::leftKey)))->Down ? 0.70f : 0.2f);  // Transparent background
         if(ImGui::BeginChild("A", ImVec2(0, 0), ImGuiChildFlags_AlwaysAutoResize | ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_FrameStyle, window_flags & ~ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("%c", (GameOptions::fullKeyboard ? GameOptions::leftKeyFullKeyboard : GameOptions::leftKey));
             auto pos = ImGui::GetWindowPos();
@@ -737,7 +924,7 @@ void ImGuiUIDrawFrame(GameWindow* window) {
         ImGui::EndChild();
 
         ImGui::SetCursorPos(adj(ImVec2(x, y)));
-        ImGui::SetNextWindowBgAlpha(ImGui::GetKeyData(WindowCallbacks::mapImGuiKey((KeyCode)(GameOptions::fullKeyboard ? GameOptions::downKeyFullKeyboard : GameOptions::downKey)))->Down ? 0.70f : 0.2f);  // Transparent background
+        ImGui::SetNextWindowBgAlpha(ImGui::GetKeyData(mapImGuiKey((KeyCode)(GameOptions::fullKeyboard ? GameOptions::downKeyFullKeyboard : GameOptions::downKey)))->Down ? 0.70f : 0.2f);  // Transparent background
         if(ImGui::BeginChild("S", ImVec2(0, 0), ImGuiChildFlags_AlwaysAutoResize | ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_FrameStyle, window_flags & ~ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("%c", (GameOptions::fullKeyboard ? GameOptions::downKeyFullKeyboard : GameOptions::downKey));
             auto pos = ImGui::GetWindowPos();
@@ -749,7 +936,7 @@ void ImGuiUIDrawFrame(GameWindow* window) {
         ImVec2 finalSize = ImVec2(x, keySize.y);
 
         ImGui::SetCursorPos(adj(ImVec2(x, y)));
-        ImGui::SetNextWindowBgAlpha(ImGui::GetKeyData(WindowCallbacks::mapImGuiKey((KeyCode)(GameOptions::fullKeyboard ? GameOptions::rightKeyFullKeyboard : GameOptions::rightKey)))->Down ? 0.70f : 0.2f);  // Transparent background
+        ImGui::SetNextWindowBgAlpha(ImGui::GetKeyData(mapImGuiKey((KeyCode)(GameOptions::fullKeyboard ? GameOptions::rightKeyFullKeyboard : GameOptions::rightKey)))->Down ? 0.70f : 0.2f);  // Transparent background
         if(ImGui::BeginChild("D", ImVec2(0, 0), ImGuiChildFlags_AlwaysAutoResize | ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_FrameStyle, window_flags & ~ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("%c", (GameOptions::fullKeyboard ? GameOptions::rightKeyFullKeyboard : GameOptions::rightKey));
             auto pos = ImGui::GetWindowPos();
@@ -966,3 +1153,26 @@ void ImGuiUIDrawFrame(GameWindow* window) {
         ReloadFont();
     }
 }
+
+SharedInputState sharedInputState = {
+    .mousePosX = 0.0f,
+    .mousePosY = 0.0f,
+    .mouseDown = {false, false, false, false, false},
+    .keyDown = {},
+    .mouseWheelDX = 0.0f,
+    .mouseWheelDY = 0.0f,
+    .mouseWheelUpdated = false,
+    .wantTextInput = false,
+    .wantCaptureMouse = false,
+    .wantCaptureKeyboard = false,
+    .clipboardMutex = {},
+    .clipboardText = "",
+    .textInputMutex = {},
+    .textInputBuffer = "",
+    .textInputUpdated = false,
+    .touchPosX = 0.0f,
+    .touchPosY = 0.0f,
+    .touchDown = false,
+    .touchId = -1,
+    .touchUpdated = false
+};

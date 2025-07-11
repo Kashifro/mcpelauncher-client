@@ -9,6 +9,9 @@
 #include <string>
 #include "settings.h"
 #include "util.h"
+#ifdef USE_IMGUI
+#include "imgui_ui.h"
+#endif
 
 WindowCallbacks::WindowCallbacks(GameWindow& window, JniSupport& jniSupport, FakeInputQueue& inputQueue) : window(window), jniSupport(jniSupport), inputQueue(inputQueue) {
     useDirectMouseInput = Mouse::feed;
@@ -49,8 +52,9 @@ void WindowCallbacks::startSendEvents() {
             jniSupport.setGameControllerConnected(gp.first, true);
         }
     }
-    if(Settings::menubarsize != menubarsize) {
-        menubarsize = Settings::menubarsize;
+    auto nextSize = Settings::menubarsize.load();
+    if(nextSize != menubarsize) {
+        menubarsize = nextSize;
         int w, h;
         window.getWindowSize(w, h);
         onWindowSizeCallback(w, h);
@@ -65,7 +69,7 @@ void WindowCallbacks::startSendEvents() {
 }
 
 void WindowCallbacks::onWindowSizeCallback(int w, int h) {
-    jniSupport.onWindowResized(w, h - Settings::menubarsize);
+    jniSupport.onWindowResized(w, h - menubarsize);
 }
 
 void WindowCallbacks::setCursorLocked(bool locked) {
@@ -133,29 +137,23 @@ void WindowCallbacks::onMouseButton(double x, double y, int btn, MouseButtonActi
         if(btn < 1)
             return;
 #ifdef USE_IMGUI
-        if(ImGui::GetCurrentContext() && btn >= 1 && btn <= 3) {
-            // High Mouse Buttons let this code crash
-            ImGuiIO& io = ImGui::GetIO();
-            io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-            io.AddMouseButtonEvent(btn - 1, action != MouseButtonAction::RELEASE);
-            if(io.WantTextInput != imguiTextInput) {
-                imguiTextInput = io.WantTextInput;
-                if(io.WantTextInput) {
-                    window.startTextInput();
-                } else {
-                    window.stopTextInput();
-                }
+        if(btn >= 1 && btn <= 3) {
+            // Update shared input state for ImGui
+            if(btn - 1 < 5) {
+                sharedInputState.mouseDown[btn - 1] = (action != MouseButtonAction::RELEASE);
             }
-            if(io.WantCaptureMouse && !window.getCursorDisabled()) {
+            
+            // Check if ImGui wants to capture this input
+            if(sharedInputState.wantCaptureMouse.load() && !window.getCursorDisabled()) {
                 return;
             }
         }
 #endif
         if(options.emulateTouch) {
             if(jniSupport.isGameActivityVersion()) {
-                sendTouchEvent(0, action == MouseButtonAction::PRESS ? AMOTION_EVENT_ACTION_DOWN : AMOTION_EVENT_ACTION_UP, x, y - Settings::menubarsize);
+                sendTouchEvent(0, action == MouseButtonAction::PRESS ? AMOTION_EVENT_ACTION_DOWN : AMOTION_EVENT_ACTION_UP, x, y - menubarsize);
             } else {
-                inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, action == MouseButtonAction::PRESS ? AMOTION_EVENT_ACTION_DOWN : AMOTION_EVENT_ACTION_UP, 0, x, y - Settings::menubarsize));
+                inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, action == MouseButtonAction::PRESS ? AMOTION_EVENT_ACTION_DOWN : AMOTION_EVENT_ACTION_UP, 0, x, y - menubarsize));
             }
             return;
         }
@@ -164,14 +162,14 @@ void WindowCallbacks::onMouseButton(double x, double y, int btn, MouseButtonActi
             return onKeyboard((KeyCode)btn, action == MouseButtonAction::PRESS ? KeyAction::PRESS : KeyAction::RELEASE, 0);
         }
         if(useDirectMouseInput)
-            Mouse::feed((char)btn, (char)(action == MouseButtonAction::PRESS ? 1 : 0), (short)x, (short)(y - Settings::menubarsize), 0, 0);
+            Mouse::feed((char)btn, (char)(action == MouseButtonAction::PRESS ? 1 : 0), (short)x, (short)(y - menubarsize), 0, 0);
         else if(!jniSupport.isGameActivityVersion()) {
             if(action == MouseButtonAction::PRESS) {
                 buttonState |= mapMouseButtonToAndroid(btn);
-                inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_MOUSE, AMOTION_EVENT_ACTION_BUTTON_PRESS, 0, x, y - Settings::menubarsize, buttonState, 0));
+                inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_MOUSE, AMOTION_EVENT_ACTION_BUTTON_PRESS, 0, x, y - menubarsize, buttonState, 0));
             } else if(action == MouseButtonAction::RELEASE) {
                 buttonState = buttonState & ~mapMouseButtonToAndroid(btn);
-                inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_MOUSE, AMOTION_EVENT_ACTION_BUTTON_RELEASE, 0, x, y - Settings::menubarsize, buttonState, 0));
+                inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_MOUSE, AMOTION_EVENT_ACTION_BUTTON_RELEASE, 0, x, y - menubarsize, buttonState, 0));
             }
         } else {
             if(action == MouseButtonAction::PRESS) {
@@ -179,7 +177,7 @@ void WindowCallbacks::onMouseButton(double x, double y, int btn, MouseButtonActi
             } else {
                 buttonState = buttonState & ~mapMouseButtonToAndroid(btn);
             }
-            sendMouseEvent(AINPUT_SOURCE_MOUSE, 0, (action == MouseButtonAction::PRESS) ? AMOTION_EVENT_ACTION_BUTTON_PRESS : AMOTION_EVENT_ACTION_BUTTON_RELEASE, buttonState, x, y - Settings::menubarsize, 0);
+            sendMouseEvent(AINPUT_SOURCE_MOUSE, 0, (action == MouseButtonAction::PRESS) ? AMOTION_EVENT_ACTION_BUTTON_PRESS : AMOTION_EVENT_ACTION_BUTTON_RELEASE, buttonState, x, y - menubarsize, 0);
         }
     }
 }
@@ -195,29 +193,29 @@ void WindowCallbacks::onMousePosition(double x, double y) {
             mousePositionCallbacksLock.unlock();
         }
 #ifdef USE_IMGUI
-        if(ImGui::GetCurrentContext()) {
-            ImGuiIO& io = ImGui::GetIO();
-            io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-            io.AddMousePosEvent(x, y);
-            if(io.WantCaptureMouse && !window.getCursorDisabled()) {
-                return;
-            }
+        // Update shared input state for ImGui
+        sharedInputState.mousePosX = x;
+        sharedInputState.mousePosY = y;
+        
+        // Check if ImGui wants to capture this input
+        if(sharedInputState.wantCaptureMouse.load() && !window.getCursorDisabled()) {
+            return;
         }
 #endif
         if(options.emulateTouch) {
             if(jniSupport.isGameActivityVersion()) {
-                sendTouchEvent(0, AMOTION_EVENT_ACTION_MOVE, x, y - Settings::menubarsize);
+                sendTouchEvent(0, AMOTION_EVENT_ACTION_MOVE, x, y - menubarsize);
             } else {
-                inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, AMOTION_EVENT_ACTION_MOVE, 0, x, y - Settings::menubarsize));
+                inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, AMOTION_EVENT_ACTION_MOVE, 0, x, y - menubarsize));
             }
             return;
         }
         if(useDirectMouseInput)
-            Mouse::feed(0, 0, (short)x, (short)(y - Settings::menubarsize), 0, 0);
+            Mouse::feed(0, 0, (short)x, (short)(y - menubarsize), 0, 0);
         else if(jniSupport.isGameActivityVersion()) {
-            sendMouseEvent(AINPUT_SOURCE_MOUSE, 0, AMOTION_EVENT_ACTION_HOVER_MOVE, buttonState, x, y - Settings::menubarsize, 0);
+            sendMouseEvent(AINPUT_SOURCE_MOUSE, 0, AMOTION_EVENT_ACTION_HOVER_MOVE, buttonState, x, y - menubarsize, 0);
         } else
-            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_MOUSE, AMOTION_EVENT_ACTION_HOVER_MOVE, 0, x, y - Settings::menubarsize, buttonState, 0));
+            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_MOUSE, AMOTION_EVENT_ACTION_HOVER_MOVE, 0, x, y - menubarsize, buttonState, 0));
     }
 }
 void WindowCallbacks::onMouseRelativePosition(double x, double y) {
@@ -252,13 +250,14 @@ void WindowCallbacks::onMouseScroll(double x, double y, double dx, double dy) {
             mouseScrollCallbacksLock.unlock();
         }
 #ifdef USE_IMGUI
-        if(ImGui::GetCurrentContext()) {
-            ImGuiIO& io = ImGui::GetIO();
-            io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-            io.AddMouseWheelEvent(dx, dy);
-            if(io.WantCaptureMouse && !window.getCursorDisabled()) {
-                return;
-            }
+        // Update shared input state for ImGui
+        sharedInputState.mouseWheelDX = dx;
+        sharedInputState.mouseWheelDY = dy;
+        sharedInputState.mouseWheelUpdated = true;
+        
+        // Check if ImGui wants to capture this input
+        if(sharedInputState.wantCaptureMouse.load() && !window.getCursorDisabled()) {
+            return;
         }
 #endif
 #ifdef __APPLE__
@@ -267,11 +266,11 @@ void WindowCallbacks::onMouseScroll(double x, double y, double dx, double dy) {
         signed char cdy = (signed char)std::max(std::min(dy * 127.0, 127.0), -127.0);
 #endif
         if(useDirectMouseInput)
-            Mouse::feed(4, (char&)cdy, 0, 0, (short)x, (short)y - Settings::menubarsize);
+            Mouse::feed(4, (char&)cdy, 0, 0, (short)x, (short)y - menubarsize);
         else if(jniSupport.isGameActivityVersion())
-            sendMouseEvent(AINPUT_SOURCE_MOUSE, 0, AMOTION_EVENT_ACTION_SCROLL, buttonState, x, y - Settings::menubarsize, cdy);
+            sendMouseEvent(AINPUT_SOURCE_MOUSE, 0, AMOTION_EVENT_ACTION_SCROLL, buttonState, x, y - menubarsize, cdy);
         else
-            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_MOUSE, AMOTION_EVENT_ACTION_SCROLL, 0, x, y - Settings::menubarsize, buttonState, cdy));
+            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_MOUSE, AMOTION_EVENT_ACTION_SCROLL, 0, x, y - menubarsize, buttonState, cdy));
     }
 }
 
@@ -296,57 +295,64 @@ void WindowCallbacks::sendMouseEvent(int32_t source, int32_t deviceId, int32_t a
 void WindowCallbacks::onTouchStart(int id, double x, double y) {
     if(hasInputMode(InputMode::Touch)) {
 #ifdef USE_IMGUI
-        if(ImGui::GetCurrentContext() && imGuiTouchId == -1) {
+        // Handle ImGui touch input using imGuiTouchId
+        if(imGuiTouchId == -1) {
             imGuiTouchId = id;
-            ImGuiIO& io = ImGui::GetIO();
-            io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-            io.AddMousePosEvent(x, y);
-            io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
-            if(io.WantCaptureMouse) {
+            // Update shared input state for ImGui
+            sharedInputState.touchPosX = x;
+            sharedInputState.touchPosY = y;
+            sharedInputState.touchDown = true;
+            sharedInputState.touchId = id;
+            sharedInputState.touchUpdated = true;
+            
+            if(sharedInputState.wantCaptureMouse.load()) {
                 return;
             }
         }
 #endif
         if(jniSupport.isGameActivityVersion()) {
-            sendTouchEvent(id, AMOTION_EVENT_ACTION_DOWN, x, y - Settings::menubarsize);
+            sendTouchEvent(id, AMOTION_EVENT_ACTION_DOWN, x, y - menubarsize);
         } else {
-            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, AMOTION_EVENT_ACTION_DOWN, id, x, y - Settings::menubarsize));
+            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, AMOTION_EVENT_ACTION_DOWN, id, x, y - menubarsize));
         }
     }
 }
 void WindowCallbacks::onTouchUpdate(int id, double x, double y) {
     if(hasInputMode(InputMode::Touch)) {
 #ifdef USE_IMGUI
-        if(ImGui::GetCurrentContext() && imGuiTouchId == id) {
-            ImGuiIO& io = ImGui::GetIO();
-            io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-            io.AddMousePosEvent(x, y);
+        // Update shared input state for ImGui only if this is the active touch
+        if(imGuiTouchId == id) {
+            sharedInputState.touchPosX = x;
+            sharedInputState.touchPosY = y;
+            sharedInputState.touchUpdated = true;
             return;
         }
 #endif
         if(jniSupport.isGameActivityVersion()) {
-            sendTouchEvent(id, AMOTION_EVENT_ACTION_MOVE, x, y - Settings::menubarsize);
+            sendTouchEvent(id, AMOTION_EVENT_ACTION_MOVE, x, y - menubarsize);
         } else {
-            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, AMOTION_EVENT_ACTION_MOVE, id, x, y - Settings::menubarsize));
+            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, AMOTION_EVENT_ACTION_MOVE, id, x, y - menubarsize));
         }
     }
 }
 void WindowCallbacks::onTouchEnd(int id, double x, double y) {
     if(hasInputMode(InputMode::Touch)) {
 #ifdef USE_IMGUI
-        if(ImGui::GetCurrentContext() && imGuiTouchId == id) {
+        // Update shared input state for ImGui and reset if this was the active touch
+        if(imGuiTouchId == id) {
+            sharedInputState.touchPosX = x;
+            sharedInputState.touchPosY = y;
+            sharedInputState.touchDown = false;
+            sharedInputState.touchId = -1;
+            sharedInputState.touchUpdated = true;
             imGuiTouchId = -1;
-            ImGuiIO& io = ImGui::GetIO();
-            io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-            io.AddMousePosEvent(x, y);
-            io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
             return;
         }
 #endif
         if(jniSupport.isGameActivityVersion()) {
-            sendTouchEvent(id, AMOTION_EVENT_ACTION_UP, x, y - Settings::menubarsize);
+            sendTouchEvent(id, AMOTION_EVENT_ACTION_UP, x, y - menubarsize);
         } else {
-            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, AMOTION_EVENT_ACTION_UP, id, x, y - Settings::menubarsize));
+            inputQueue.addEvent(FakeMotionEvent(AINPUT_SOURCE_TOUCHSCREEN, AMOTION_EVENT_ACTION_UP, id, x, y - menubarsize));
         }
     }
 }
@@ -397,124 +403,6 @@ static bool deadKey(KeyCode key) {
     return false;
 }
 
-#ifdef USE_IMGUI
-ImGuiKey WindowCallbacks::mapImGuiKey(KeyCode code) {
-    if(code >= KeyCode::NUM_0 && code <= KeyCode::NUM_9)
-        return (ImGuiKey)((int)code - (int)KeyCode::NUM_0 + ImGuiKey_0);
-    if(code >= KeyCode::NUMPAD_0 && code <= KeyCode::NUMPAD_9)
-        return (ImGuiKey)((int)code - (int)KeyCode::NUMPAD_0 + ImGuiKey_Keypad0);
-    if(code >= KeyCode::A && code <= KeyCode::Z)
-        return (ImGuiKey)((int)code - (int)KeyCode::A + ImGuiKey_A);
-    if(code >= KeyCode::FN1 && code <= KeyCode::FN12)
-        return (ImGuiKey)((int)code - (int)KeyCode::FN1 + ImGuiKey_F1);
-    switch(code) {
-    case KeyCode::BACK:
-        return ImGuiKey_AppBack;
-    case KeyCode::BACKSPACE:
-        return ImGuiKey_Backspace;
-    case KeyCode::TAB:
-        return ImGuiKey_Tab;
-    case KeyCode::ENTER:
-        return ImGuiKey_Enter;
-    case KeyCode::LEFT_SHIFT:
-        return ImGuiKey_LeftShift;
-    case KeyCode::RIGHT_SHIFT:
-        return ImGuiKey_RightShift;
-    case KeyCode::LEFT_CTRL:
-        return ImGuiKey_LeftCtrl;
-    case KeyCode::RIGHT_CTRL:
-        return ImGuiKey_RightCtrl;
-    case KeyCode::PAUSE:
-        return ImGuiKey_Pause;
-    case KeyCode::CAPS_LOCK:
-        return ImGuiKey_CapsLock;
-    case KeyCode::ESCAPE:
-        return ImGuiKey_Escape;
-    case KeyCode::SPACE:
-        return ImGuiKey_Space;
-    case KeyCode::PAGE_UP:
-        return ImGuiKey_PageUp;
-    case KeyCode::PAGE_DOWN:
-        return ImGuiKey_PageDown;
-    case KeyCode::END:
-        return ImGuiKey_End;
-    case KeyCode::HOME:
-        return ImGuiKey_Home;
-    case KeyCode::LEFT:
-        return ImGuiKey_LeftArrow;
-    case KeyCode::UP:
-        return ImGuiKey_UpArrow;
-    case KeyCode::RIGHT:
-        return ImGuiKey_RightArrow;
-    case KeyCode::DOWN:
-        return ImGuiKey_DownArrow;
-    case KeyCode::INSERT:
-        return ImGuiKey_Insert;
-    case KeyCode::DELETE:
-        return ImGuiKey_Delete;
-    case KeyCode::NUM_LOCK:
-        return ImGuiKey_NumLock;
-    case KeyCode::SCROLL_LOCK:
-        return ImGuiKey_ScrollLock;
-    case KeyCode::SEMICOLON:
-        return ImGuiKey_Semicolon;
-    case KeyCode::EQUAL:
-        return ImGuiKey_Equal;
-    case KeyCode::COMMA:
-        return ImGuiKey_Comma;
-    case KeyCode::MINUS:
-        return ImGuiKey_Minus;
-    case KeyCode::NUMPAD_ADD:
-        return ImGuiKey_KeypadAdd;
-    case KeyCode::NUMPAD_SUBTRACT:
-        return ImGuiKey_KeypadSubtract;
-    case KeyCode::NUMPAD_MULTIPLY:
-        return ImGuiKey_KeypadMultiply;
-    case KeyCode::NUMPAD_DIVIDE:
-        return ImGuiKey_KeypadDivide;
-    case KeyCode::PERIOD:
-        return ImGuiKey_Period;
-    case KeyCode::NUMPAD_DECIMAL:
-        return ImGuiKey_KeypadDecimal;
-    case KeyCode::SLASH:
-        return ImGuiKey_Slash;
-    case KeyCode::GRAVE:
-        return ImGuiKey_GraveAccent;
-    case KeyCode::LEFT_BRACKET:
-        return ImGuiKey_LeftBracket;
-    case KeyCode::BACKSLASH:
-        return ImGuiKey_Backslash;
-    case KeyCode::RIGHT_BRACKET:
-        return ImGuiKey_RightBracket;
-    case KeyCode::APOSTROPHE:
-        return ImGuiKey_Apostrophe;
-    case KeyCode::MENU:
-        return ImGuiKey_Menu;
-    case KeyCode::LEFT_ALT:
-        return ImGuiKey_LeftAlt;
-    case KeyCode::RIGHT_ALT:
-        return ImGuiKey_RightAlt;
-    default:
-        return ImGuiKey_None;
-    }
-}
-
-static ImGuiKey mapImGuiModKey(KeyCode code) {
-    switch(code) {
-    case KeyCode::LEFT_SHIFT:
-    case KeyCode::RIGHT_SHIFT:
-        return ImGuiMod_Shift;
-    case KeyCode::LEFT_CTRL:
-    case KeyCode::RIGHT_CTRL:
-        return ImGuiMod_Ctrl;
-    case KeyCode::LEFT_ALT:
-        return ImGuiMod_Alt;
-    default:
-        return ImGuiKey_None;
-    }
-}
-#endif
-
 void WindowCallbacks::onKeyboard(KeyCode key, KeyAction action, int mods) {
     if(hasInputMode(InputMode::Mouse)) {
         if(keyboardCallbacksLock.try_lock()) {
@@ -527,21 +415,14 @@ void WindowCallbacks::onKeyboard(KeyCode key, KeyAction action, int mods) {
             keyboardCallbacksLock.unlock();
         }
 #ifdef USE_IMGUI
-        if(ImGui::GetCurrentContext()) {
-            ImGuiIO& io = ImGui::GetIO();
-            io.AddKeyEvent(mapImGuiModKey(key), action != KeyAction::RELEASE);
-            io.AddKeyEvent(mapImGuiKey(key), action != KeyAction::RELEASE);
-            if(io.WantTextInput != imguiTextInput) {
-                imguiTextInput = io.WantTextInput;
-                if(io.WantTextInput) {
-                    window.startTextInput();
-                } else {
-                    window.stopTextInput();
-                }
-            }
-            if(io.WantCaptureKeyboard || io.WantTextInput) {
-                return;
-            }
+        // Update shared input state for ImGui
+        if((int)key < 512) {
+            sharedInputState.keyDown[(int)key] = (action != KeyAction::RELEASE);
+        }
+        
+        // Check if ImGui wants to capture this input
+        if(sharedInputState.wantCaptureKeyboard.load() || sharedInputState.wantTextInput.load()) {
+            return;
         }
 #endif
 // return onKeyboard((KeyCode) 4, KeyAction::PRESS);
@@ -626,12 +507,16 @@ void WindowCallbacks::onKeyboard(KeyCode key, KeyAction action, int mods) {
 }
 void WindowCallbacks::onKeyboardText(std::string const& c) {
 #ifdef USE_IMGUI
-    if(ImGui::GetCurrentContext()) {
-        ImGuiIO& io = ImGui::GetIO();
-        io.AddInputCharactersUTF8(c.data());
-        if(io.WantCaptureKeyboard) {
-            return;
-        }
+    // Add text input to shared state
+    {
+        std::lock_guard<std::mutex> lock(sharedInputState.textInputMutex);
+        sharedInputState.textInputBuffer += c;
+        sharedInputState.textInputUpdated = true;
+    }
+    
+    // Check if ImGui wants to capture this input
+    if(sharedInputState.wantCaptureKeyboard.load()) {
+        return;
     }
 #endif
     if(c == "\n" && !jniSupport.getTextInputHandler().isMultiline())

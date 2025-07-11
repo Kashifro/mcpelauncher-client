@@ -1,10 +1,11 @@
 #pragma once
+#include <atomic>
 #include <string>
 #include <optional>
 
 struct Settings {
     static std::optional<bool> enable_imgui;
-    static int menubarsize;
+    static std::atomic<int> menubarsize;
     static std::string clipboard;
     static bool enable_keyboard_autofocus_patches_1_20_60;
     static bool enable_keyboard_autofocus_paste_patches_1_20_60;

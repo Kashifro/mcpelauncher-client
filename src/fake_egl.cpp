@@ -134,7 +134,7 @@ EGLBoolean eglQuerySurface(EGLDisplay display, EGLSurface surface, EGLint attrib
     if(attribute == EGL_WIDTH || attribute == EGL_HEIGHT) {
         int w, h;
         ((GameWindow *)surface)->getWindowSize(w, h);
-        *value = (attribute == EGL_WIDTH ? w : h - Settings::menubarsize);
+        *value = (attribute == EGL_WIDTH ? w : h - Settings::menubarsize.load());
         return EGL_TRUE;
     }
     Log::warn("FakeEGL", "eglQuerySurface %x", attribute);

@@ -126,7 +126,4 @@ public:
     static int mapMouseButtonToAndroid(int btn);
     static int mapMinecraftToAndroidKey(KeyCode code);
     static int mapGamepadToAndroidKey(GamepadButtonId btn);
-#ifdef USE_IMGUI
-    static ImGuiKey mapImGuiKey(KeyCode code);
-#endif
 };
